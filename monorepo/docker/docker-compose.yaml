@@ -1,0 +1,112 @@
+version: '2'
+services:
+  kafdrop:
+    container_name: kafdrop
+    image: obsidiandynamics/kafdrop
+    restart: 'always'
+    ports:
+      - '9000:9000'
+    environment:
+      KAFKA_BROKERCONNECT: 'kafka:29092'
+      JVM_OPTS: '-Xms16M -Xmx48M -Xss180K -XX:-TieredCompilation -XX:+UseStringDeduplication -noverify'
+    depends_on:
+      - 'kafka'
+
+  zookeeper:
+    container_name: zookeeper
+    image: docker.io/bitnami/zookeeper:3.8
+    restart: 'always'
+    ports:
+      - '2181:2181'
+    volumes:
+      - 'zookeeper_data:/bitnami'
+    environment:
+      - ALLOW_ANONYMOUS_LOGIN=yes
+
+  kafka:
+    container_name: kafka-bitnami
+    image: docker.io/bitnami/kafka:3.4
+    restart: 'always'
+    ports:
+      - '29092:29092'
+      - '9092:9092'
+    volumes:
+      - 'kafka_data:/bitnami'
+    environment:
+      - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_ENABLE_KRAFT=no
+      - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
+      - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:29092,CONTROLLER://:9093,EXTERNAL://:9092
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:29092,EXTERNAL://localhost:9092
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      - KAFKA_CFG_MESSAGE_MAX_BYTES=200000000
+      - KAFKA_CFG_MAX_PARTITION_FETCH_BYTES=200000000
+      - KAFKA_CFG_MAX_REQUEST_SIZE=200000000
+    depends_on:
+      - zookeeper
+
+  mongodb:
+    container_name: bitami-mongodb
+    image: bitnami/mongodb
+    ports:
+      - '${MONGO_PORT}:27017'
+    volumes:
+      - db_data:/bitnami/mongodb
+      - ./docker-entrypoint-initdb.d/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js
+    env_file:
+      - .env
+    environment:
+      - MONGODB_REPLICA_SET_MODE=primary
+      - MONGODB_REPLICA_SET_NAME=rs0
+      - MONGODB_ADVERTISED_HOSTNAME=localhost
+      - MONGODB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD}
+      - MONGODB_REPLICA_SET_KEY=replicasetkey123
+      # Add more environment variables for authentication if needed
+
+  mysql-auth:
+    container_name: mysql-auth
+    image: mysql
+    cap_add:
+      - SYS_NICE
+    restart: always
+    environment:
+      MYSQL_DATABASE: '${DB_AUTH_DATABASE}'
+      MYSQL_USER: '${DB_AUTH_USERNAME}'
+      MYSQL_PASSWORD: '${DB_AUTH_PASSWORD}'
+      MYSQL_ROOT_PASSWORD: '${DB_ROOT_PASSWORD}'
+      MYSQL_ROOT_HOST: '%'
+    ports:
+      - '${DB_AUTH_PORT}:3306'
+    volumes:
+      - mysql_db_auth:/var/lib/mysql
+      - ./docker-entrypoint-initdb.d/init.sql:/docker-entrypoint-initdb.d/init.sql
+
+  mysql-prod-mgmt:
+    container_name: mysql-prod-mgmt
+    image: mysql
+    cap_add:
+      - SYS_NICE
+    restart: always
+    environment:
+      MYSQL_DATABASE: '${DB_PROD_MGMT_DATABASE}'
+      MYSQL_USER: '${DB_PROD_MGMT_USER}'
+      MYSQL_PASSWORD: '${DB_PROD_MGMT_PASSWORD}'
+      MYSQL_ROOT_PASSWORD: '${DB_ROOT_PASSWORD}'
+      MYSQL_ROOT_HOST: '%'
+    ports:
+      - '${DB_PROD_MGMT_PORT}:3306'
+    volumes:
+      - mysql_db_prod_mgmt:/var/lib/mysql
+      - ./docker-entrypoint-initdb.d/init.sql:/docker-entrypoint-initdb.d/init.sql
+volumes:
+  db_data:
+    driver: local
+  mysql_db_auth:
+    driver: local
+  mysql_db_prod_mgmt:
+    driver: local
+  zookeeper_data:
+    driver: local
+  kafka_data:
+    driver: local
